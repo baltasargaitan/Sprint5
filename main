@@ -1,0 +1,124 @@
+import json
+
+# Clase base Cliente
+class Cliente:
+    def __init__(self, numero, nombre, apellido, dni, tipo):
+        self.numero = numero
+        self.nombre = nombre
+        self.apellido = apellido
+        self.dni = dni
+        self.tipo = tipo
+        self.transacciones = []
+
+    def agregar_transaccion(self, transaccion):
+        self.transacciones.append(transaccion)
+
+    def procesar_transacciones(self):
+        transacciones_procesadas = []
+        for transaccion in self.transacciones:
+            resultado = transaccion.procesar(self)
+            transacciones_procesadas.append(resultado)
+        return transacciones_procesadas
+
+    def generar_reporte(self):
+        transacciones_procesadas = self.procesar_transacciones()
+        html = f"<html><body><h1>Reporte de Transacciones</h1><h2>Cliente: {self.nombre} {self.apellido}</h2>"
+        html += f"<p>DNI: {self.dni}</p><p>Tipo: {self.tipo}</p><table border='1'><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th>Monto</th><th>Razón</th></tr>"
+        
+        for transaccion in transacciones_procesadas:
+            html += f"<tr><td>{transaccion['fecha']}</td><td>{transaccion['tipo']}</td><td>{transaccion['estado']}</td><td>{transaccion['monto']}</td><td>{transaccion['razon']}</td></tr>"
+        
+        html += "</table></body></html>"
+        return html
+
+# Clase Transaccion
+class Transaccion:
+    def __init__(self, estado, tipo, cuentaNumero, cupoDiarioRestante, monto, fecha, numero, saldoEnCuenta, totalTarjetas, totalChequeras):
+        self.estado = estado
+        self.tipo = tipo
+        self.cuentaNumero = cuentaNumero
+        self.cupoDiarioRestante = cupoDiarioRestante
+        self.monto = monto
+        self.fecha = fecha
+        self.numero = numero
+        self.saldoEnCuenta = saldoEnCuenta
+        self.totalTarjetas = totalTarjetas
+        self.totalChequeras = totalChequeras
+
+    def procesar(self, cliente):
+        # Si la transacción fue rechazada, devolvemos el estado y la razón
+        if self.estado == "RECHAZADA":
+            razon = self.determinar_razon_rechazo(cliente)
+            return {
+                "fecha": self.fecha,
+                "tipo": self.tipo,
+                "estado": self.estado,
+                "monto": self.monto,
+                "razon": razon
+            }
+        
+        # Si fue aceptada, no hay razón de rechazo
+        return {
+            "fecha": self.fecha,
+            "tipo": self.tipo,
+            "estado": self.estado,
+            "monto": self.monto,
+            "razon": ""
+        }
+
+    def determinar_razon_rechazo(self, cliente):
+        # Definir reglas de rechazo según el tipo de cliente y la transacción
+        if self.tipo == "ALTA_CHEQUERA" and self.totalChequeras >= 2:
+            return "Limite de chequeras excedido"
+        if self.tipo == "ALTA_TARJETA_CREDITO" and self.totalTarjetas >= 5:
+            return "Limite de tarjetas de crédito excedido"
+        if self.tipo == "RETIRO_EFECTIVO_CAJERO_AUTOMATICO" and self.monto > self.cupoDiarioRestante:
+            return "Excede el cupo diario de retiro"
+        return "Motivo desconocido"
+
+# Clase para procesar el JSON y generar los reportes
+class ProcesadorTransacciones:
+    def __init__(self, archivo_json):
+        self.archivo_json = archivo_json
+        self.clientes = []
+
+    def cargar_clientes(self):
+        with open(self.archivo_json) as file:
+            data = json.load(file)
+
+        # Creación de cliente con los datos del archivo JSON
+        numero = data["numero"]
+        nombre = data["nombre"]
+        apellido = data["apellido"]
+        dni = data["DNI"]
+        tipo_cliente = data["tipo"]
+        
+        cliente = Cliente(numero, nombre, apellido, dni, tipo_cliente)
+
+        for transaccion_data in data["transacciones"]:
+            transaccion = Transaccion(
+                transaccion_data["estado"],
+                transaccion_data["tipo"],
+                transaccion_data["cuentaNumero"],
+                transaccion_data["cupoDiarioRestante"],
+                transaccion_data["monto"],
+                transaccion_data["fecha"],
+                transaccion_data["numero"],
+                transaccion_data["saldoEnCuenta"],
+                transaccion_data["totalTarjetasDeCreditoActualmente"],
+                transaccion_data["totalChequerasActualmente"]
+            )
+            cliente.agregar_transaccion(transaccion)
+        
+        self.clientes.append(cliente)
+
+    def generar_reportes(self):
+        for cliente in self.clientes:
+            reporte_html = cliente.generar_reporte()
+            with open(f"reporte_{cliente.dni}.html", "w") as file:
+                file.write(reporte_html)
+
+# Ejecución del procesamiento y generación de reportes
+procesador = ProcesadorTransacciones("tps_transacciones.json")
+procesador.cargar_clientes()
+procesador.generar_reportes()
